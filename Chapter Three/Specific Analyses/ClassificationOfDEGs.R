@@ -316,7 +316,7 @@ ggsave(
 )
 
 ###########################################################
-# S H A R E D/U N I Q U E    T Y P E    D E G S    A C R O S S    C E L L T Y P E S
+# S H A R E D/U N I Q U E    T Y P E I    D E G S    A C R O S S    C E L L T Y P E S
 ###########################################################
 # Fist we plot the upSet plot
 # We need to create AlphaVecs and BetaVecs
