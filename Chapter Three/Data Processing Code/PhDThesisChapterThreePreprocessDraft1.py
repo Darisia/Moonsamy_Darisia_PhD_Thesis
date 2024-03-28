@@ -159,7 +159,11 @@ sascrip_functions.multi_run_cqc(
     output_prefix = "IFNStimAll",
     gene_column = 2
 )
-#
+# The format of the output files that will likely be used for the next steps is as follows:
+# .. "output_path/sample_ID_subset_seurat.rds"
+# Furthermore, a preQC seurat object is also saved so users are able to perform their own QC and visualisation if need be
+
+
 # Run the normalisation step to normalise the raw gene counts from good-quality cells
 # for i in range(0, len(dataset_sample_IDs)):
 #     filename = dataset_sample_IDs[i] + "_subset_seurat.rds"
@@ -172,3 +176,161 @@ sascrip_functions.multi_run_cqc(
 #     sample_ID = dataset_sample_IDs[i],
 #     output_directory_path = "./1.Preprocessing/PRJNA646704/Normalised/"
 # )
+
+# Gonna use the new multi_log_normalise function to normalise the gene expression information
+# Since it's still new - gonna add the full code here (in case it hasn't been fully updated)
+#####################################################
+# Function to create the multi_log_noramlise code 
+#####################################################
+# lognormalise function that Runs LogNormalize from within Seurat to normalise the single-cell data for seuqencing depth
+def log_normalize(
+    seurat_object,
+    sample_ID,
+    output_directory_path = "working_directory",
+    output_log_matrix = False,
+    output_count_matrix = False):
+
+    '''
+    LogNormalise function within Seurat to perform normalisation on the raw counts
+
+    Parameters:
+    seurat_object(str): Path to the saved seurat object
+    sample_ID(str): Name of the sample
+    output_directory_path(str): Path to the output directory where all generated files and folders will be saved
+    ENSG_gname38_path(str): Path to the file called ENSG_gname38.tsv that will allow us to convert ENSG name into hgnc symbols
+
+    '''
+
+    # Sort out the output directory
+    if output_directory_path == "working_directory":
+        output_directory_path = "./"
+    else:
+        gen_func.mkdirs(output_directory_path)
+
+    # Generate the directory where the output log mtx matrix would be saved
+    if output_log_matrix == True:
+        output_matrix_dir = os.path.join(output_directory_path, sample_ID + '_log_normalised_matrix')
+        gen_func.mkdirs(output_matrix_dir)
+
+    # Generate the directory where the output count mtx matrix would be saved
+    if output_log_matrix == True:
+        output_matrix_dir = os.path.join(output_directory_path, sample_ID + '_normalised_matrix')
+        gen_func.mkdirs(output_matrix_dir)
+
+    # if transcripts_to_genes supplied - create ensg_gname
+    if transcripts_to_genes_file != None:
+        # Path to the required R script
+        Bash_file = pkg_resources.resource_filename('SASCRiP', 'cut_t2g.sh')
+
+        command = 'sh {} {} {}'.format(
+        Bash_file,
+        transcripts_to_genes_file,
+        output_directory_path
+        )
+
+        check_process = subprocess.run(command, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+        # check to see if that variable has a returncode above 0 - if it does, print the error message
+        if check_process.returncode != 0:
+            print(check_process.stderr.decode())
+            print(check_process.stdout.decode())
+
+        # Print all standard output to log file
+        logger.info(check_process.stdout.decode())
+
+        ensg_gname_path = os.path.join(output_directory_path, "ensg_gname.tsv")
+    else:
+        logger.warning("No transcripts_to_genes_file given. If ESEMBL gene names are used, a Seurat object cannot be properly generated and an error will be returned")
+        ensg_gname_path = "None"
+
+    # all variables for the bash code
+    # 1) path to seurat object
+    # 2) sample_ID
+    # 3) output_directory_path
+    # 4) ENSG_gname_path
+
+    # Path to the required R script
+    R_file = pkg_resources.resource_filename('SASCRiP', 'logNorm_seurat.R')
+    #R_file = "./logNorm_seurat.R" # This needs to be in the current working durectory
+    # let's put together the bash code
+    command = "Rscript {} {} {} {} {} {} {} {} {} {}".format(
+        R_file,
+        seurat_object,
+        sample_ID,
+        output_directory_path,
+        ensg_gname_path,
+        output_log_matrix,
+        output_count_matrix)
+
+    # Use subprocess to run the bash command through python
+    check_process = subprocess.run(command, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    # Check to see if there was an error. If so, print the standard error
+    if check_process.returncode != 0:
+        print(check_process.stderr)
+
+####################################################################################################
+
+# Defines the function that runs sctransform_noramlize on multiple samples simultaneously
+def multi_log_normalize(
+    seurat_objects,
+    all_sample_IDs,
+    output_directory_paths,
+    transcripts_to_genes_file = None,
+    output_log_matrix = False,
+    output_count_matrix = False
+
+):
+    for i in range(0, len(all_sample_IDs)):
+        sascrip_functions.log_normalize(
+            seurat_object = seurat_objects[i],
+            sample_ID = all_sample_IDs[i],
+            output_directory = output_directory_paths[i] if isinstance(output_directory_paths, list) == True else output_directory_paths,
+            output_log_matrix = output_log_matrix[i] if isinstance(output_log_matrix, list) == True else output_log_matrix,
+            output_count_matrix = output_count_matrix[i] if isinstance(output_count_matrix, list) == True else output_count_matrix,
+            transcripts_to_genes_file = transcripts_to_genes_file
+        )
+
+#####################################################
+# Normalise the gene counts relative to the sequencing depth of each cell
+#####################################################
+
+
+# Sample_IDs (as before - keep this constant)
+sample_IDs = [
+"IFNA_227291",
+"IFNL_227292",
+"UnS_227293", # Unstimulated1
+"UnS_227294", # Unstimulated2
+"IFNB_227295"
+]
+# Output_paths (as before - all stored together)
+output_paths = [
+"./1.Preprocessing/IFNStimMain/227291",
+"./1.Preprocessing/IFNStimMain/227292",
+"./1.Preprocessing/IFNStimMain/227293",
+"./1.Preprocessing/IFNStimMain/227294",
+"./1.Preprocessing/IFNStimMain/227295"
+]
+
+# Now we create a path to the filtered seurat objects from the previous functions
+seurat_objects = [
+    "./1.Preprocessing/IFNStimMain/227291/IFNA_227291_subset_seurat.rds",
+    "./1.Preprocessing/IFNStimMain/227292/IFNL_227292_subset_seurat.rds",
+    "./1.Preprocessing/IFNStimMain/227293/UnS_227293_subset_seurat.rds",
+    "./1.Preprocessing/IFNStimMain/227294/UnS_227294_subset_seurat.rds",
+    "./1.Preprocessing/IFNStimMain/227295/IFNB_227295_subset_seurat.rds"
+]
+# Now we call the function
+multi_log_normalize(
+    seurat_objects = seurat_objects,
+    all_sample_IDs = sample_IDs,
+    output_directory_paths = output_paths
+)
+
+# The final preprocessing output will look as follows:
+# .. "output_path/sample_ID_logNorm.rds" - these files will be used for downstream analysis
+
+#####################################################
+# End of preprocessing - next steps in R
+#####################################################
