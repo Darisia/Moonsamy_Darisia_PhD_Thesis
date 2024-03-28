@@ -217,6 +217,15 @@ PrelimVolcano <- ggplot(
   )
 PrelimVolcano <- edit_plots(PrelimVolcano)
 PrelimVolcano
+# After viewing the volcano plot - identify filtering thresholds that likely fit the dataset
+
+### Classify differentially expressed genes 
+THP1DEGs <- filter(
+    ResDataFramewCounts,
+    baseMean > 10 & abs(log2FoldChange) > 0.5 & padj < 0.05
+)
+# This filtered dataset is used for all downstream analyses
+
 
 # All bulk RNA-seq datasets from chapter were processed exactly as above
 
